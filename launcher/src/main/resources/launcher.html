@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmartJP</title>
+<style>
+/* The launcher page, in the app's own "Snow" look (tokens from frontend/src/styles/base.css), always in the default accent. */
+:root {
+  --font: Inter, system-ui, 'Segoe UI', 'Noto Sans', sans-serif;
+  --font-display: Newsreader, Georgia, 'Times New Roman', serif;
+  --paper: #f7f7f5;
+  --tint: #ebebe8;
+  --line-strong: #cdcdc8;
+  --ink: #1b1b1a;
+  --muted: #62625e;
+  --wrong: #c62828;
+  --accent: #c2410c;
+  --accent-ink: #ffffff;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font: 13px/1.45 var(--font);
+  border: 1px solid var(--line-strong);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+header { height: 34px; flex: none; display: flex; justify-content: flex-end; align-items: center; padding: 0 6px; }
+.close { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; padding: 0; }
+.close:hover { background: var(--tint); color: var(--ink); }
+.close svg { width: 14px; height: 14px; }
+main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 0 32px 28px; min-height: 0; }
+.logo { width: 96px; height: 96px; flex: none; }
+.logo svg { display: block; width: 100%; height: 100%; }
+.name { margin-top: 12px; font-family: var(--font-display); font-size: 30px; line-height: 1.1; }
+.ver { margin-top: 4px; min-height: 1.4em; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ver b { color: var(--ink); font-weight: 600; }
+.bar { width: 100%; height: 4px; margin-top: 26px; background: var(--tint); border-radius: 2px; overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 2px; }
+.fail .bar > i { background: var(--wrong); }
+.caption { width: 100%; min-height: 62px; margin-top: 12px; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.caption b { font-size: 14px; font-weight: 600; }
+.caption .sub { min-height: 1.45em; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.caption .sub.err { color: var(--wrong); }
+.vbar { display: inline-block; width: 1px; height: 0.95em; margin: 0 8px; vertical-align: -0.12em; background: var(--line-strong); }
+.buttons { display: flex; gap: 8px; margin-top: 8px; }
+.buttons[hidden] { display: none; }
+button.btn { font: inherit; font-size: 12.5px; padding: 4px 16px; border-radius: 4px; border: 1px solid var(--line-strong); background: #fff; color: var(--ink); cursor: pointer; }
+button.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.btn:focus-visible, .close:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<header data-jolt-drag>
+  <button class="close" type="button" aria-label="Close" onclick="window.jolt && jolt.frame ? jolt.frame.close() : window.close()">
+    <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/></svg>
+  </button>
+</header>
+<main id="main">
+  <div class="logo" data-jolt-drag><!--LOGO--></div>
+  <div class="name" data-jolt-drag>SmartJP</div>
+  <div id="ver" class="ver">&nbsp;</div>
+  <div class="bar" aria-hidden="true"><i id="fill"></i></div>
+  <div class="caption" role="status" aria-live="polite">
+    <b id="title">Checking for updates</b>
+    <span id="sub" class="sub">&nbsp;</span>
+    <div id="buttons" class="buttons" hidden>
+      <button id="retry" class="btn primary" type="button">Retry</button>
+      <button id="quit" class="btn" type="button">Quit</button>
+    </div>
+  </div>
+</main>
+<script>
+(function () {
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var el = { main: document.getElementById('main'), title: document.getElementById('title'), sub: document.getElementById('sub'),
+             ver: document.getElementById('ver'), buttons: document.getElementById('buttons'), fill: document.getElementById('fill') };
+  var IDLE = 0.08;
+  var state = { target: IDLE, shown: IDLE, received: 0, total: 0, current: '', latest: '', note: '' };
+
+  // The bar eases towards its target and lands on it exactly (an exponential ease alone never quite arrives).
+  var last = performance.now();
+  function frame(now) {
+    var dt = Math.min(0.1, (now - last) / 1000);
+    last = now;
+    var gap = state.target - state.shown;
+    state.shown = reduce || Math.abs(gap) < 0.004 ? state.target : state.shown + gap * Math.min(1, dt * 5.5);
+    el.fill.style.width = (state.shown * 100).toFixed(2) + '%';
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  function mb(n) { return (n / 1048576).toFixed(1); }
+  function say(title, parts, error) {
+    el.title.textContent = title;
+    el.sub.className = 'sub' + (error ? ' err' : '');
+    el.sub.textContent = '';
+    (parts || []).forEach(function (text, i) {
+      if (i > 0) {
+        var bar = document.createElement('span');
+        bar.className = 'vbar';
+        bar.setAttribute('aria-hidden', 'true');
+        el.sub.append(bar);
+      }
+      el.sub.append(text);
+    });
+    if (!el.sub.textContent) el.sub.innerHTML = '&nbsp;';
+  }
+  function versionLine() {
+    el.ver.textContent = '';
+    if (state.latest && state.current && state.latest !== state.current) {
+      el.ver.append('Version ' + state.current + ' → ');
+      var b = document.createElement('b');
+      b.textContent = state.latest;
+      el.ver.append(b);
+    } else if (state.current || state.latest) {
+      el.ver.textContent = 'Version ' + (state.current || state.latest);
+    } else {
+      el.ver.innerHTML = '&nbsp;';
+    }
+  }
+  function setFailed(on) {
+    el.main.classList.toggle('fail', on);
+    el.buttons.hidden = !on;
+  }
+  var handlers = {
+    installed: function (m) { state.current = m.version; versionLine(); },
+    phase: function (m) {
+      setFailed(false);
+      if (m.phase === 'checking') {
+        state.target = IDLE;
+        say('Checking for updates');
+      } else if (m.phase === 'downloading') {
+        say('Downloading update');
+      } else if (m.phase === 'installing') {
+        state.target = 1;
+        say('Installing update');
+      } else if (m.phase === 'starting') {
+        state.target = 1;
+        if (state.latest) { state.current = state.latest; state.latest = ''; versionLine(); }
+        say('Starting SmartJP', state.note ? [state.note] : []);
+      }
+    },
+    update: function (m) {
+      state.current = m.current; state.latest = m.latest; state.total = m.bytes;
+      versionLine();
+    },
+    progress: function (m) {
+      state.received = m.received; state.total = m.total || state.total;
+      var f = state.total > 0 ? Math.min(1, state.received / state.total) : 0;
+      state.target = Math.max(IDLE, f);
+      say('Downloading update', [Math.round(f * 100) + '%', mb(state.received) + ' / ' + mb(state.total) + ' MB']);
+    },
+    note: function (m) { state.note = m.message; },
+    error: function (m) {
+      setFailed(true);
+      say('Update stopped', [m.message], true);
+    }
+  };
+  if (window.jolt) {
+    jolt.onMessage(function (text) {
+      var m;
+      try { m = JSON.parse(text); } catch (e) { return; }
+      if (m && handlers[m.type]) handlers[m.type](m);
+    });
+  }
+  function send(text) { if (window.jolt) jolt.postMessage(text); }
+  document.getElementById('retry').addEventListener('click', function () {
+    state.note = ''; state.received = 0; state.target = IDLE;
+    setFailed(false);
+    say('Checking for updates');
+    send('retry');
+  });
+  document.getElementById('quit').addEventListener('click', function () { send('quit'); });
+  // Tell Java the page is in place, so it can show the window and start. Not from requestAnimationFrame: a hidden web view
+  // never runs it, so the window would only appear when Java's fallback timer fired, seconds later.
+  send('ready');
+})();
+</script>
+</body>
+</html>

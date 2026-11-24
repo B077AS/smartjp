@@ -1,0 +1,344 @@
+/* "Snow" look: near-white paper and ink, one accent. The accent below is only the default: the user picks one in Settings and
+   state/theme.ts then sets --accent and --accent-ink on the page. Everything that follows the accent is derived from it here.
+   Right and wrong answers keep their own colours whatever the accent is. */
+:root {
+  --paper: #f7f7f5;
+  --surface: #ffffff;
+  --tint: #ebebe8;
+  --line: #dededa;
+  --line-strong: #cdcdc8;
+  --ink: #1b1b1a;
+  --muted: #62625e;
+  --accent: #c2410c; /* burnt orange, the default */
+  --accent-ink: #ffffff; /* text on the accent */
+  --accent-hover: color-mix(in srgb, var(--accent) 80%, #000);
+  --good: #3e7b4f;
+  --wrong: #c62828;
+  --select-tint: color-mix(in srgb, var(--accent) 13%, var(--surface)); /* a selected kana tile */
+  --scroll: #a9a9a3; /* scrollbar thumb */
+  --selection: color-mix(in srgb, var(--accent) 28%, var(--surface)); /* highlighted text, ink text stays readable */
+
+  --font-ui: 'Inter', system-ui, sans-serif;
+  --font-display: 'Newsreader', Georgia, serif;
+  --font-mincho: 'Hina Mincho', serif;
+  --font-gothic: 'Noto Sans JP', sans-serif;
+  --font-kana: var(--font-mincho);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--ink);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--accent);
+}
+
+h1,
+h2 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  margin: 0;
+}
+h1 {
+  font-size: 27px;
+}
+h2 {
+  font-size: 19px;
+}
+
+::selection {
+  background: var(--selection);
+  color: var(--ink);
+}
+::-moz-selection {
+  background: var(--selection);
+  color: var(--ink);
+}
+
+/* Only what someone may want to copy can be highlighted: the characters (kana, kanji), the texts of the user's own cards,
+   answers and readings, typed text, and the credits. Titles, labels, buttons, tabs, counts and the like cannot, so a stray
+   drag or a double click does not paint half the screen. A new place that shows something worth copying adds its class here. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+input,
+textarea,
+.glyphs .g,
+.glyph .kana,
+.glyph.reading,
+.custom-text,
+.custom-front,
+.custom-answer,
+.copyable,
+.verdict .facts,
+.missed .big,
+.missed .caption,
+.toast .body,
+.ui-dialog-desc,
+.about {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Keyboard focus is thin and quiet: a soft ring of the accent right against the control. Text fields do not get the ring
+   at all, they get an accent border and a faint halo (rule at the end of this file). */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  outline-offset: 1px;
+}
+a:focus-visible,
+.link-button:focus-visible {
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ---- shared pieces used by the pages ---- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: 0 1px 0 var(--line);
+}
+
+/* The separator between items in a line (a thin vertical line, never a dot): <span class="vbar" aria-hidden="true"></span>. */
+.vbar {
+  display: inline-block;
+  width: 1px;
+  height: 0.95em;
+  margin: 0 0.6em;
+  background: currentColor;
+  opacity: 0.35;
+  vertical-align: -0.12em;
+}
+.muted {
+  color: var(--muted);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.field label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.field input[type='text'],
+.field input[type='email'],
+.field input[type='password'] {
+  width: 100%;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+}
+.field textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  resize: vertical;
+}
+.field .hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+/* A button that overwrites or removes something. Red like the wrong answers: it never follows the accent. */
+.btn-danger {
+  background: var(--wrong);
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--wrong) 88%, #000);
+}
+.btn-quiet {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.btn-quiet:hover:not(:disabled) {
+  background: var(--tint);
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.kana {
+  font-family: var(--font-kana);
+}
+
+.alert {
+  padding: 9px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  border: 1px solid;
+}
+.alert-error {
+  background: #f8e6e0;
+  border-color: #d9a69a;
+  color: #7a1f10;
+}
+.alert-ok {
+  background: #e4efe0;
+  border-color: #a9c7a2;
+  color: #24512f;
+}
+.alert-info {
+  background: var(--tint);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ---- our own scrollbar (WebView2 and WebKitGTK both understand it) ---- */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scroll);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* A column that scrolls on its own (the sidebar, the settings screen's right column) when the window is too short for it. The bar
+   should keep its room (scrollbar-gutter: stable, set by the user of the class), so nothing shifts when it shows, but the thumb is only drawn while the column has the class
+   `hot`: the pointer is over it or something in it has the keyboard focus (state/hoverScroll.ts adds and removes it; CSS :hover would not
+   redraw the bar in Chromium). It is always scrollable with the wheel, the touchpad and the keyboard. */
+.hover-scroll {
+  overflow-y: auto; /* wherever it is used, also set scrollbar-gutter: stable, where the bar can show up (it is not here, so a column that never scrolls keeps its width) */
+}
+.hover-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  background-clip: content-box;
+}
+.hover-scroll.hot::-webkit-scrollbar-thumb {
+  background: var(--scroll);
+  background-clip: content-box;
+}
+.hover-scroll.hot::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: content-box;
+}
+
+/* Reka locks page scrolling while a dialog is open by setting overflow:hidden and a padding on <body>. That makes the
+   scrollbar vanish and the page jump sideways, so the lock is switched off here (stylesheet !important beats the
+   inline style). Dropdowns do not lock at all (UiSelect passes :body-lock="false"). */
+body {
+  overflow: visible !important;
+  padding-right: 0 !important;
+  margin-right: 0 !important;
+}
+
+/* The page behind an open dialog must not scroll. Our own lock instead of Reka's (state/scrollLock.ts adds the class while
+   a dialog's overlay exists). --scrollbar-width is the bar that just went away, kept as padding so nothing jumps sideways;
+   the overlay then covers the whole window. Dropdowns have no .ui-overlay, so they do not lock. */
+html.scroll-locked {
+  overflow: hidden;
+  padding-right: var(--scrollbar-width, 0px);
+}
+
+/* A focused text field: the border turns to the accent and a faint halo of it fades out around it. The :is() list keeps this
+   stronger than the fields' own border rules, whatever order the styles load in. */
+input:is([type='text'], [type='email'], [type='password'], :not([type])):focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/* Desktop app only: the native title bar sits right above the page, so a 1px line marks where it ends. Fixed and above
+   everything (also dialog overlays), so it takes no space and no layout depends on it. */
+html.desktop::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--line-strong);
+  z-index: 10000;
+  pointer-events: none;
+}

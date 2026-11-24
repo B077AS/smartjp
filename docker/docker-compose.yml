@@ -1,0 +1,33 @@
+# SmartJP, the website, in Docker. Copy this file to the machine that will host it, then:
+#
+#   docker compose up -d
+#   docker compose logs                    (the access key is printed at every start; it is also in Settings, Sync, once you are in)
+#
+# Update:   docker compose pull && docker compose up -d
+# Pin:      image: ghcr.io/b077as/smartjp:0.1.0      (every release has its own tag; :latest follows the newest)
+#
+# Everything the application writes lives in the `smartjp-data` volume (the SQLite database and the logs): back it up. Replacing the image
+# never touches it.
+#
+# There are no accounts: the ONE key printed in the log unlocks the site and pairs a desktop app with it. Treat it like a password, and put
+# HTTPS in front of the site (a reverse proxy, or a VPN such as Tailscale) before reaching it from anywhere but this machine.
+name: smartjp                       # fixed project name, so the data volume is always `smartjp_smartjp-data`
+services:
+  smartjp:
+    image: ghcr.io/b077as/smartjp:latest
+    container_name: smartjp
+    restart: unless-stopped
+    stop_grace_period: 20s
+    ports:
+      # Only this machine can reach the site. To reach it through a reverse proxy on another machine or from a trusted network, use
+      # "8081:8081"; never expose it to the internet without HTTPS.
+      - "127.0.0.1:8081:8081"
+    environment:
+      # Optional: a key of your own (at least 20 characters) instead of the random one made at the first start. Then the key cannot be
+      # renewed in the app. Leave it unset to keep the generated one.
+      SMARTJP_ACCESS_KEY: ${SMARTJP_ACCESS_KEY:-}
+    volumes:
+      - smartjp-data:/data
+
+volumes:
+  smartjp-data:

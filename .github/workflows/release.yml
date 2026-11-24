@@ -1,0 +1,318 @@
+# Release pipeline for SmartJP. One tag builds everything people can download:
+#
+#   Desktop app   SmartJP-Setup.exe (Windows, Inno Setup) and SmartJP.AppImage (Linux), shipped as a self-updating install built with
+#                 jpack (https://github.com/B077AS/jpack).
+#   Website       a Docker image on ghcr.io (ghcr.io/<owner>/smartjp). That is the ONLY way the website is shipped: nobody downloads a jar.
+#
+# Release flow (create a GitHub release with a tag such as 0.1.0; a leading "v" is tolerated and stripped):
+#   `jars` builds the Vue app and the application jar ONCE (with the tests), and the launcher jar, and every other job takes those files:
+#     - the Windows and Linux jobs run `jpack:package` over them (a jlink Java runtime shared by the launcher and the app, the install
+#       folder and the release files), then wrap the install folder into the download: SmartJP-Setup.exe (Inno Setup) on Windows,
+#       SmartJP.AppImage (built by jpack itself, with its block index) on Linux, and attach everything to the release;
+#     - the Docker job wraps the same application jar in an image (docker/Dockerfile) and pushes it as :<version>, and as :latest too
+#       for a normal (non-pre-) release. Docker users update with `docker compose pull`; they do not go through jpack.
+#   The tag is the single source of truth for the version: the pom's version is set from it, the About tab shows it, and jpack versions the
+#   release with it.
+#
+#   Installed desktop copies update from releases/latest/download/ (updateUrl in src/jpack/jpack.json): the stub fetches
+#   jpack-<platform>.json and then only the parts (jars, runtime, launcher, stub) whose hash changed. So EVERY release must carry ALL
+#   files of target/jpack/release/, changed or not (a user who skipped a version needs whatever changed since theirs). The manifest is
+#   uploaded LAST: the parts it names must exist before anyone can see it.
+#
+# Manual flow (Actions tab -> Run workflow, tag = an existing release, e.g. 0.1.0):
+#   Rebuilds everything from that tag's source and replaces the assets on the release (the Docker image gets its :<version> tag again, but
+#   never :latest). Use it when a job failed or an asset is missing.
+
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag (e.g. 0.1.0): rebuilds the Windows, Linux and Docker assets from that tag and replaces them on the release"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  # The bundled Java runtime must be at least this (a security floor; the jlink runtime is made from the JDK the job installs).
+  MIN_JAVA: "25.0.5.1"
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - name: Resolve the version from the release tag
+        id: v
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="${{ inputs.tag }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+  # The application jar is platform independent (the Windows and the Linux Jolt backends, the SQLite drivers of every platform and the built
+  # page are side by side in it), so it is built ONCE here and every other job packages this same file: two builds would give two jars that
+  # are not byte-identical, and with them two different "app" parts on the release. The launcher is the same: one jar for both systems.
+  jars:
+    name: Application and launcher jars (built once)
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: "25"
+          cache: maven
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # The page goes into src/main/resources/static (git-ignored), which Maven then packs into the jar.
+      - name: Build the page
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Set the version from the tag
+        run: mvn -B -ntp versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+
+      # The tests run on a real SQLite file in a temp folder (and start the website on a random port): a release never ships a red build.
+      - name: Build the application jar (with the tests)
+        run: mvn -B -ntp clean package -DskipFrontend
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: app-jar
+          path: target/smartjp-${{ needs.version.outputs.version }}.jar
+          if-no-files-found: error
+
+      # The launcher's version is deliberately NOT bumped (the versions:set above does not touch launcher/), so the launcher part keeps its
+      # hash and installed copies do not download it again until the launcher changes.
+      - name: Build the launcher jar
+        run: mvn -B -ntp -f launcher/pom.xml clean package
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: launcher-jar
+          path: launcher/target/smartjp-launcher.jar
+          if-no-files-found: error
+
+  windows:
+    name: Windows (SmartJP-Setup.exe + update files)
+    needs: [version, jars]
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # A manual run rebuilds a release and replaces what is on it; a normal run only skips identical files.
+      REPLACE_EXISTING: ${{ github.event_name == 'workflow_dispatch' }}
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: "25"
+          cache: maven
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: app-jar
+          path: prebuilt
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: launcher-jar
+          path: launcher/target
+
+      - name: Set the version from the tag
+        run: mvn -B -ntp versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+
+      # The goal alone, on the jars built above (nothing is compiled here). jpack.json names the launcher jar at launcher/target/.
+      - name: Build the jpack release (packages the jars built above)
+        run: mvn -B -ntp -Pjpack jpack:package "-Djpack.jar=prebuilt/smartjp-$VERSION.jar"
+
+      - name: Check the release files
+        run: |
+          ls -l target/jpack/release
+          test -s target/jpack/release/jpack-windows-x64.json
+          test -d target/jpack/image/windows-x64
+          # The two jars are published as they are (rawParts in jpack.json), not as zips.
+          test -s "target/jpack/release/smartjp-$VERSION.jar"
+          test -s target/jpack/release/smartjp-launcher.jar
+          grep -q '"packed": false' target/jpack/release/jpack-windows-x64.json
+          # The packaged runtime must hold every JDK module the app needs (modules in src/jpack/jpack.json is a hand-kept list).
+          bash .github/scripts/check-runtime-modules.sh "prebuilt/smartjp-$VERSION.jar" target/jpack/image/windows-x64/runtime/bin/java.exe
+          runtime_version=$(sed -n 's/^JAVA_VERSION="\(.*\)"$/\1/p' target/jpack/image/windows-x64/runtime/release)
+          echo "bundled Java runtime: $runtime_version"
+          [ "$(printf '%s\n%s\n' "$MIN_JAVA" "$runtime_version" | sort -V | head -n1)" = "$MIN_JAVA" ] || { echo "the bundled runtime is $runtime_version, older than $MIN_JAVA"; exit 1; }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe')) {
+            choco install innosetup --no-progress -y
+          }
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $repo = (Get-Location).Path
+          $fileVersion = ($env:VERSION -split '[-+]')[0]
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "/DAppVersion=$env:VERSION" `
+            "/DFileVersion=$fileVersion" `
+            "/DImageDir=$repo\target\jpack\image\windows-x64" `
+            "/DOutputDir=$repo\target\installer" `
+            "$repo\packaging\windows\smartjp.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+
+      - name: Upload to the release
+        run: |
+          # Parts first, the manifest last (see the header).
+          bash .github/scripts/upload-parts.sh target/jpack/release
+          # The installer has no version in its name, so releases/latest/download/SmartJP-Setup.exe never changes.
+          gh release upload "$TAG" target/installer/SmartJP-Setup.exe --clobber -R "$GITHUB_REPOSITORY"
+          gh release upload "$TAG" target/jpack/release/jpack-windows-x64.json --clobber -R "$GITHUB_REPOSITORY"
+
+  linux:
+    name: Linux (SmartJP.AppImage + update files)
+    needs: [version, jars]
+    # The oldest Ubuntu GitHub still offers: the bundled Java runtime and the stub need a glibc no newer than the users'.
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPLACE_EXISTING: ${{ github.event_name == 'workflow_dispatch' }}
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: "25"
+          cache: maven
+
+      # appimagetool is itself an AppImage; jpack runs it with --appimage-extract-and-run, so no FUSE is needed. Pinned to a
+      # release and checked against its SHA-256 (as in jpack's own workflow).
+      - name: Get appimagetool
+        run: |
+          set -eu
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  appimagetool" | sha256sum -c -
+          chmod +x appimagetool
+          echo "APPIMAGETOOL=$PWD/appimagetool" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: app-jar
+          path: prebuilt
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: launcher-jar
+          path: launcher/target
+
+      - name: Set the version from the tag
+        run: mvn -B -ntp versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+
+      - name: Build the jpack release (packages the jars built above)
+        run: mvn -B -ntp -Pjpack jpack:package "-Djpack.jar=prebuilt/smartjp-$VERSION.jar"
+
+      - name: Check the release files
+        run: |
+          ls -l target/jpack/release
+          test -s target/jpack/release/jpack-linux-x64.json
+          test -s "target/jpack/release/smartjp-$VERSION.jar"
+          test -s target/jpack/release/smartjp-launcher.jar
+          grep -q '"packed": false' target/jpack/release/jpack-linux-x64.json
+          # The packaged runtime must hold every JDK module the app needs (modules in src/jpack/jpack.json is a hand-kept list).
+          bash .github/scripts/check-runtime-modules.sh "prebuilt/smartjp-$VERSION.jar" target/jpack/image/linux-x64/runtime/bin/java
+          runtime_version=$(sed -n 's/^JAVA_VERSION="\(.*\)"$/\1/p' target/jpack/image/linux-x64/runtime/release)
+          echo "bundled Java runtime: $runtime_version"
+          [ "$(printf '%s\n%s\n' "$MIN_JAVA" "$runtime_version" | sort -V | head -n1)" = "$MIN_JAVA" ] || { echo "the bundled runtime is $runtime_version, older than $MIN_JAVA"; exit 1; }
+          test -s target/jpack/release/SmartJP.AppImage
+          test -s target/jpack/release/SmartJP.AppImage.blocks
+
+      - name: Upload to the release
+        run: |
+          # Parts first, the manifest last. The AppImage has no version in its name (appImageName in jpack.json), so it is both what
+          # the manifest names for in-place AppImage updates and the stable releases/latest/download/SmartJP.AppImage link; its
+          # block index goes with it.
+          bash .github/scripts/upload-parts.sh target/jpack/release
+          gh release upload "$TAG" target/jpack/release/jpack-linux-x64.json --clobber -R "$GITHUB_REPOSITORY"
+
+  # The website: the same application jar every other download carries, in an image (docker/Dockerfile). One image for amd64 and arm64:
+  # the jar holds the SQLite driver for both, and a Raspberry Pi is a likely home for a personal website.
+  docker:
+    name: Docker image (ghcr.io)
+    needs: [version, jars]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      EVENT: ${{ github.event_name }}
+      PRERELEASE: ${{ github.event.release.prerelease }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: app-jar
+          path: prebuilt
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push the image
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"   # registry names must be lower case
+          echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+          TAGS=(-t "$IMAGE:$VERSION")
+          # :latest follows real releases only: not pre-releases, and not a manual rebuild of an old tag.
+          if [ "$EVENT" = "release" ] && [ "$PRERELEASE" != "true" ]; then
+            TAGS+=(-t "$IMAGE:latest")
+          fi
+
+          docker buildx build -f docker/Dockerfile \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg JAR="prebuilt/smartjp-$VERSION.jar" \
+            --build-arg VERSION="$VERSION" \
+            "${TAGS[@]}" \
+            --push .

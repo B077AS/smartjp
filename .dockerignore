@@ -1,0 +1,4 @@
+# The image only needs the built jar (see docker/Dockerfile); keep everything else out of the build context.
+**
+!target/smartjp-*.jar
+!prebuilt/smartjp-*.jar

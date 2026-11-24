@@ -1,0 +1,41 @@
+{
+  "name": "SmartJP",
+  "mainClass": "org.springframework.boot.loader.launch.JarLauncher",
+  "args": ["--desktop"],
+
+  "updateUrl": "https://github.com/B077AS/smartjp/releases/latest/download",
+  "policy": "manual",
+
+  "log": false,
+
+  "archive": false,
+
+  "appImageName": "SmartJP.AppImage",
+
+  "rawParts": ["app", "launcher"],
+
+  "modules": "java.base,java.compiler,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.security.jgss,java.sql,java.sql.rowset,java.transaction.xa,java.xml,jdk.charsets,jdk.crypto.ec,jdk.httpserver,jdk.jfr,jdk.naming.dns,jdk.unsupported,jdk.zipfs",
+
+  "jvmArgs": [
+    "--enable-native-access=ALL-UNNAMED"
+  ],
+
+  "branding": {
+    "icon": "src/main/resources/icon.ico",
+    "description": "SmartJP",
+    "company": "SmartJP",
+    "product": "SmartJP"
+  },
+
+  "launcher": {
+    "jar": "launcher/target/smartjp-launcher.jar",
+    "mainClass": "io.github.b077as.smartjp.launcher.Boot",
+    "jvmArgs": [
+      "-XX:+UseSerialGC",
+      "-Xms8m",
+      "-Xmx128m",
+      "-XX:TieredStopAtLevel=1",
+      "--enable-native-access=ALL-UNNAMED"
+    ]
+  }
+}

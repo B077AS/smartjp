@@ -1,0 +1,169 @@
+package io.github.b077as.smartjp.launcher;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Map;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+
+import io.github.b077as.jolt.AppOptions;
+import io.github.b077as.jolt.Application;
+import io.github.b077as.jolt.ColorScheme;
+import io.github.b077as.jolt.WebWindow;
+import io.github.b077as.jolt.WindowOptions;
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * The launcher window: a small frameless Jolt window whose page ({@code launcher.html}) shows what the update is doing. Java owns the
+ * update ({@link UpdateManager}); the page only draws what it is told.
+ *
+ * <p>Messages are JSON strings. Java to page: {@code {type:"phase", phase, ...}}, {@code installed}, {@code update}, {@code progress},
+ * {@code note}, {@code error}. Page to Java: {@code ready} (the first frame is on screen), {@code retry}, {@code quit}.
+ */
+@Slf4j
+class LauncherApp implements UpdateManager.Listener {
+
+    private static final String APP_ID = "io.github.b077as.smartjp.launcher";
+    private static final int WIDTH = 360;
+    private static final int HEIGHT = 340;
+    /** The page's background (Snow), so there is no white flash before it is drawn. */
+    private static final int PAPER = 0xF7F7F5;
+    /** Show the window even if the page never says it is ready, so a broken page cannot leave a hidden process behind. */
+    private static final Duration SHOW_ANYWAY_AFTER = Duration.ofSeconds(6);
+    private static final Gson GSON = new Gson();
+
+    private final Application app;
+    private final boolean demo;
+    private WebWindow window;
+
+    private LauncherApp(Application app, boolean demo) {
+        this.app = app;
+        this.demo = demo;
+    }
+
+    static void run(boolean demo) {
+        AppOptions options = AppOptions.of(APP_ID).withQuietNativeLogs(true)
+                .withDataDirectory(Boot.dataDirectory().resolve("launcher-webview"));
+        Application app = Application.create(options);
+        log.info("Application created {} ms after the JVM started", System.currentTimeMillis() - Boot.STARTED);
+        LauncherApp launcher = new LauncherApp(app, demo);
+        try {
+            app.run(launcher::open);
+        } finally {
+            app.close();
+        }
+        // The stub waits for this process to end before it swaps files in: leave at once, whatever threads are still around.
+        System.exit(0);
+    }
+
+    private void open() {
+        WindowOptions options = WindowOptions.defaults()
+                .withTitle("SmartJP")
+                .withSize(WIDTH, HEIGHT)
+                .withResizable(false)
+                .withFrameless(true)
+                .withCentered(true)
+                .withVisible(false)
+                .withIcon(readResource("/icon.ico"))
+                .withTitleBarScheme(ColorScheme.LIGHT)
+                .withBackgroundColor(PAPER);
+        log.info("Creating the window {} ms after the JVM started", System.currentTimeMillis() - Boot.STARTED);
+        window = app.createWindow(options);
+        log.info("Window created {} ms after the JVM started", System.currentTimeMillis() - Boot.STARTED);
+
+        window.onMessage(this::fromPage);
+        window.loadHtml(page());
+
+        Thread.ofVirtual().start(() -> {
+            try {
+                Thread.sleep(SHOW_ANYWAY_AFTER);
+            } catch (InterruptedException e) {
+                return;
+            }
+            window.show();
+        });
+    }
+
+    /** The page with the app's logo put in (one copy of the logo, in the front end's public folder, shared through the pom). */
+    private static String page() {
+        String logo = new String(readResource("/logo.svg"), StandardCharsets.UTF_8).replaceFirst("(?s)^\\s*<\\?xml.*?\\?>", "").trim();
+        return new String(readResource("/launcher.html"), StandardCharsets.UTF_8).replace("<!--LOGO-->", logo);
+    }
+
+    // ------------------------------------------------------------------------------------ page to Java
+
+    private void fromPage(String message) {
+        switch (message) {
+            case "ready" -> {
+                log.info("Page ready {} ms after the JVM started", System.currentTimeMillis() - Boot.STARTED);
+                window.show();
+                startFlow();
+            }
+            case "retry" -> startFlow();
+            case "quit" -> app.dispatch(app::quit);
+            default -> log.debug("Ignored a message from the page: {}", message);
+        }
+    }
+
+    private void startFlow() {
+        UpdateManager manager = new UpdateManager(this);
+        Thread.ofVirtual().name("update-flow").start(demo ? manager::runDemo : manager::run);
+    }
+
+    // ------------------------------------------------------------------------------------ Java to page (UpdateManager.Listener)
+
+    @Override
+    public void onInstalled(String version) {
+        send("installed", Map.of("version", version));
+    }
+
+    @Override
+    public void onPhase(Phase phase) {
+        send("phase", Map.of("phase", phase.name().toLowerCase()));
+    }
+
+    @Override
+    public void onUpdate(String current, String latest, long bytes) {
+        send("update", Map.of("current", current, "latest", latest, "bytes", bytes));
+    }
+
+    @Override
+    public void onProgress(long received, long total) {
+        send("progress", Map.of("received", received, "total", total));
+    }
+
+    @Override
+    public void onNote(String message) {
+        send("note", Map.of("message", message));
+    }
+
+    @Override
+    public void onError(String message) {
+        send("error", Map.of("message", message));
+    }
+
+    @Override
+    public void onLaunched() {
+        app.dispatch(app::quit);
+    }
+
+    private void send(String type, Map<String, ?> fields) {
+        JsonObject o = GSON.toJsonTree(fields).getAsJsonObject();
+        o.addProperty("type", type);
+        window.postMessage(o.toString());
+    }
+
+    private static byte[] readResource(String name) {
+        try (InputStream in = LauncherApp.class.getResourceAsStream(name)) {
+            if (in == null) {
+                throw new IllegalStateException(name + " is missing from the launcher jar");
+            }
+            return in.readAllBytes();
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not read " + name, e);
+        }
+    }
+}

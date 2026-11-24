@@ -1,0 +1,22 @@
+target/
+node_modules/
+dist/
+# The built Vue app (npm run build in frontend/ writes it here; the client serves it from the class path)
+src/main/resources/static/
+.idea/
+*.iml
+.vscode/
+data/
+*.log
+
+# Commercial or third-party fonts and files must never be committed (see RESEARCH.md, section 3).
+*.ttf
+*.otf
+logs/
+
+# The owner keeps CLAUDE.md local (same as komm-hub and jolt)
+/CLAUDE.md
+
+# The launcher is built with the shade plugin, which writes this next to its pom
+/launcher/dependency-reduced-pom.xml
+/RESEARCH.md

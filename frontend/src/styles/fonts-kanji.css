@@ -1,0 +1,71 @@
+/*
+ * Four jouyou kanji that the "japanese" font files (main.ts) do not contain: 塡 頰 𠮟 剝, the official forms of
+ * 填 頬 叱 剥. Both fonts have them in other slices of the same @fontsource packages (found by reading the cmap of every
+ * slice, see RESEARCH.md 2b). Each face below is limited to exactly those characters (unicode-range), so the
+ * browser only loads these small files and only when a page shows one of them. Same families as the "japanese" faces,
+ * so nothing else changes. Both fonts are SIL OFL.
+ */
+@font-face {
+  font-family: 'Noto Sans JP';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/noto-sans-jp/files/noto-sans-jp-44-400-normal.woff2') format('woff2');
+  unicode-range: U+5861;
+}
+@font-face {
+  font-family: 'Noto Sans JP';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/noto-sans-jp/files/noto-sans-jp-9-400-normal.woff2') format('woff2');
+  unicode-range: U+9830;
+}
+@font-face {
+  font-family: 'Noto Sans JP';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/noto-sans-jp/files/noto-sans-jp-1-400-normal.woff2') format('woff2');
+  unicode-range: U+20B9F;
+}
+@font-face {
+  font-family: 'Noto Sans JP';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/noto-sans-jp/files/noto-sans-jp-48-400-normal.woff2') format('woff2');
+  unicode-range: U+525D;
+}
+@font-face {
+  font-family: 'Hina Mincho';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/hina-mincho/files/hina-mincho-44-400-normal.woff2') format('woff2');
+  unicode-range: U+5861;
+}
+@font-face {
+  font-family: 'Hina Mincho';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/hina-mincho/files/hina-mincho-9-400-normal.woff2') format('woff2');
+  unicode-range: U+9830;
+}
+@font-face {
+  font-family: 'Hina Mincho';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/hina-mincho/files/hina-mincho-1-400-normal.woff2') format('woff2');
+  unicode-range: U+20B9F;
+}
+@font-face {
+  font-family: 'Hina Mincho';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/hina-mincho/files/hina-mincho-48-400-normal.woff2') format('woff2');
+  unicode-range: U+525D;
+}
