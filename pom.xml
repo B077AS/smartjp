@@ -7,7 +7,6 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <!-- Same Spring Boot line as jolt-spring-boot-starter. -->
     <version>4.1.2</version>
     <relativePath/>
   </parent>
@@ -23,17 +22,11 @@
   <properties>
     <java.version>25</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <!-- Same versions as komm-hub. Spring Boot's parent reads these two property names. -->
     <lombok.version>1.18.46</lombok.version>
     <gson.version>2.14.0</gson.version>
-    <!-- Jolt (desktop window), released on Maven Central. Same Spring Boot line as jolt-spring-boot-starter. -->
     <jolt.version>0.5.0</jolt.version>
-    <!-- SQLite: the database of the website and of the desktop app (one file, no server). Not managed by Spring Boot. -->
     <sqlite.version>3.53.4.0</sqlite.version>
-    <!-- How to start npm for the "frontend" profile; the windows profile below swaps in npm.cmd. -->
     <npm.executable>npm</npm.executable>
-    <!-- Do not add a property called jpack.version: it is the jpack plugin's own `version` parameter and would replace the release version. -->
-    <!-- Keep the plugin (it bundles the stub) and jpack-api on the same release, and launcher/pom.xml has its own jpack.api.version. -->
     <jpack.plugin.version>0.1.3</jpack.plugin.version>
     <jpack.api.version>0.1.3</jpack.api.version>
   </properties>
@@ -54,8 +47,6 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-gson</artifactId>
     </dependency>
-    <!-- The database: JPA (Hibernate) on SQLite. Hibernate has no SQLite dialect of its own: it lives in hibernate-community-dialects,
-         which must be the same version as Hibernate itself (Spring Boot's hibernate.version). -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -74,8 +65,6 @@
       <groupId>org.projectlombok</groupId>
       <artifactId>lombok</artifactId>
     </dependency>
-
-    <!-- Jolt: the window (WebView2 on Windows, WebKitGTK on Linux), its RPC bridge and the Spring Boot starter. -->
     <dependency>
       <groupId>io.github.b077as</groupId>
       <artifactId>jolt-core</artifactId>
@@ -96,21 +85,16 @@
       <artifactId>jolt-spring-boot-starter</artifactId>
       <version>${jolt.version}</version>
     </dependency>
-    <!-- The operating system's keystore (Windows Credential Manager, Linux Secret Service): the desktop app keeps the server's access key there. -->
     <dependency>
       <groupId>io.github.b077as</groupId>
       <artifactId>jolt-credentials</artifactId>
       <version>${jolt.version}</version>
     </dependency>
-
-    <!-- The connection to the jpack stub that starts the installed desktop app: it tells the launcher the window is up (OnScreenNotifier).
-         Without a stub (an IDE run, the website) it does nothing. No dependencies of its own. -->
     <dependency>
       <groupId>io.github.b077as</groupId>
       <artifactId>jpack-api</artifactId>
       <version>${jpack.api.version}</version>
     </dependency>
-
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
@@ -150,10 +134,21 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <!-- Jolt and the SQLite driver call native code. With this entry "java -jar" needs no enable-native-access flag and prints no warning. -->
               <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
             </manifestEntries>
           </archive>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <configuration>
+          <nonFilteredFileExtensions>
+            <nonFilteredFileExtension>ico</nonFilteredFileExtension>
+            <nonFilteredFileExtension>png</nonFilteredFileExtension>
+            <nonFilteredFileExtension>woff</nonFilteredFileExtension>
+            <nonFilteredFileExtension>woff2</nonFilteredFileExtension>
+          </nonFilteredFileExtensions>
         </configuration>
       </plugin>
       <plugin>
@@ -167,7 +162,6 @@
               <version>${lombok.version}</version>
             </path>
           </annotationProcessorPaths>
-          <!-- Jolt reads the parameter names of @JoltRpc methods when it generates the TypeScript declarations. -->
           <parameters>true</parameters>
         </configuration>
       </plugin>
@@ -175,12 +169,6 @@
   </build>
 
   <profiles>
-    <!-- Packing the front end into the jar: `mvn package` always builds the Vue app (frontend/, needs Node: npm install, npm run build).
-         The build writes straight into src/main/resources/static (vite.config.ts), the same folder Maven copies into
-         target/classes on every compile, so an IDE run and the jar read the same pages and there is no second copy that can go stale.
-         The copy step below only refreshes target/classes after the build, because it ran after Maven's own resources step.
-         It runs in prepare-package, so `mvn test` stays fast and needs no Node. With -DskipFrontend nothing is built: run
-         "npm run build" in frontend/ by hand first (a jar without pages refuses to start and says so). -->
     <profile>
       <id>frontend</id>
       <activation><property><name>!skipFrontend</name></property></activation>
@@ -236,12 +224,6 @@
       <activation><os><family>windows</family></os></activation>
       <properties><npm.executable>npm.cmd</npm.executable></properties>
     </profile>
-    <!-- The self-updating desktop install, built with jpack (settings in src/jpack/jpack.json), a jlink Java runtime
-         shared by the launcher and the app, the install folder, the release files and, on Linux, the AppImage. It builds for the machine it
-         runs on. Needs the application jar (mvn package builds it first) and the launcher jar (mvn -f launcher/pom.xml package):
-           mvn clean package -Pjpack -DskipTests
-           -> target/jpack/image/<platform>/ (the install folder), target/jpack/release/ (what a GitHub release carries)
-         The release workflow builds both jars once and runs only the goal on them: mvn -Pjpack jpack:package -Djpack.jar=... -->
     <profile>
       <id>jpack</id>
       <build>

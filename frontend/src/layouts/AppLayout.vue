@@ -11,6 +11,7 @@ const settingsOpen = ref(false)
 const route = useRoute()
 const inFlashcards = computed(() => route.name === 'home' || route.name === 'play')
 const inCharacters = computed(() => route.name === 'characters')
+const inRound = computed(() => route.name === 'play')
 </script>
 
 <template>
@@ -18,8 +19,15 @@ const inCharacters = computed(() => route.name === 'characters')
     <nav class="sidebar hover-scroll" aria-label="Main">
       <Wordmark />
       <div class="links">
-        <RouterLink :to="{ name: 'home' }" class="link" :class="{ active: inFlashcards }"><Icon :path="mdiCardsOutline" :size="18" />Flashcards</RouterLink>
-        <RouterLink :to="{ name: 'characters' }" class="link" :class="{ active: inCharacters }"><Icon :path="mdiBookOpenVariantOutline" :size="18" />Characters</RouterLink>
+        <!-- During a round the way out is on the round screen (Stop, or Home when it is over), so these two are not links. -->
+        <template v-if="inRound">
+          <span class="link locked active" aria-disabled="true" title="Stop the round first"><Icon :path="mdiCardsOutline" :size="18" />Flashcards</span>
+          <span class="link locked" aria-disabled="true" title="Stop the round first"><Icon :path="mdiBookOpenVariantOutline" :size="18" />Characters</span>
+        </template>
+        <template v-else>
+          <RouterLink :to="{ name: 'home' }" class="link" :class="{ active: inFlashcards }"><Icon :path="mdiCardsOutline" :size="18" />Flashcards</RouterLink>
+          <RouterLink :to="{ name: 'characters' }" class="link" :class="{ active: inCharacters }"><Icon :path="mdiBookOpenVariantOutline" :size="18" />Characters</RouterLink>
+        </template>
       </div>
       <div class="account">
         <button type="button" class="settings-link" @click="settingsOpen = true"><Icon :path="mdiCogOutline" :size="18" />Settings</button>
@@ -67,6 +75,12 @@ const inCharacters = computed(() => route.name === 'characters')
 .link.active {
   background: var(--tint);
   font-weight: 600;
+}
+/* Not a link while a round runs: no hover, no pointer, dimmed (the current page stays marked, just less strongly). */
+.link.locked {
+  cursor: not-allowed;
+  color: var(--muted);
+  opacity: 0.6;
 }
 .account {
   margin-top: auto;

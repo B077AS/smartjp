@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { mdiArrowLeft, mdiArrowRight, mdiCheck, mdiClockOutline, mdiClose, mdiEyeOutline, mdiFlagCheckered, mdiRestart, mdiSkipNext, mdiTuneVariant } from '@mdi/js'
+import { mdiArrowLeft, mdiArrowRight, mdiCheck, mdiClockOutline, mdiClose, mdiEyeOutline, mdiFlagCheckered, mdiHome, mdiRestart, mdiSkipNext } from '@mdi/js'
 import Icon from '../components/Icon.vue'
 import KanjiReading from '../components/KanjiReading.vue'
 import { toKana, toKatakana } from 'wanakana'
 import KanaGlyphs from '../components/KanaGlyphs.vue'
 import { sameReadingKana } from '../kana/kana'
-import { captionOf, faceOf, isCorrect, isCustomCard, isKanaCard, isKanjiCard } from '../flashcards/cards'
+import { faceOf, getCard, isCorrect, isCustomCard, isKanaCard, isKanjiCard, type StudyCard } from '../flashcards/cards'
+import { clip } from '../flashcards/custom'
 import { recordAnswer } from '../progress/log'
 import { buildDeck, missedCards, session, settings, shuffled, startSession } from '../flashcards/store'
 
@@ -159,6 +160,40 @@ const cellGap = computed(() => (total.value > 60 ? '1px' : total.value > 30 ? '2
 
 // ---- end of the round ------------------------------------------------------------------------------------
 const missed = computed(() => (phase.value === 'done' ? missedCards() : []))
+
+/** The right answer of a card as one or two short lines (a kanji in a reading question lists its first readings with their romaji). */
+function answerLines(card: StudyCard): string[] {
+  if (isCustomCard(card)) return [clip(card.answer, 120)]
+  if (isKanjiCard(card)) {
+    const readings = [...card.onView, ...card.kunView]
+      .slice(0, 3)
+      .map((v) => `${v.stem}${v.okurigana} (${v.romaji})`)
+      .join(', ')
+    const meanings = card.meanings.slice(0, 3).join(', ')
+    if (meaningMode.value) return [meanings]
+    return flipMode.value ? [readings, meanings] : [readings]
+  }
+  return [kanaMode.value ? card.kana : card.romaji]
+}
+
+/** What went wrong with a missed card: what was typed, or why nothing was. */
+function mistakeOf(r: { typed: string; timedOut: boolean }): { text: string; typed: boolean } {
+  if (r.typed) return { text: r.typed, typed: true }
+  if (r.timedOut) return { text: 'Time is up', typed: false }
+  return { text: flipMode.value ? 'Missed it' : 'Skipped', typed: false }
+}
+
+// One row per missed answer, in the order they happened.
+const review = computed(() =>
+  phase.value !== 'done'
+    ? []
+    : session.results
+        .filter((r) => !r.correct)
+        .map((r) => {
+          const card = getCard(r.cardId)
+          return { id: r.cardId, card, face: faceOf(card), plain: isCustomCard(card), answer: answerLines(card), mistake: mistakeOf(r) }
+        }),
+)
 
 function practiseMissed(): void {
   startSession(shuffled(missedCards()), session.config)
@@ -321,26 +356,43 @@ onBeforeUnmount(stopTimer)
     </div>
 
     <section v-else class="card done stack" aria-label="Round finished">
-      <h1>Round finished</h1>
-      <p class="score"><strong>{{ correctCount }}</strong> of {{ total }} correct</p>
-
-      <div v-if="missed.length" class="stack">
-        <h2>To practise</h2>
-        <ul class="missed">
-          <li v-for="c in missed" :key="c.id">
-            <span class="big" :class="isCustomCard(c) ? 'plain' : 'kana'" lang="ja">{{ faceOf(c) }}</span>
-            <span class="muted caption">{{ captionOf(c) }}</span>
-          </li>
-        </ul>
+      <div class="done-head">
+        <h1>{{ missed.length ? 'Round finished' : 'Perfect round' }}</h1>
+        <span v-if="missed.length" class="muted counts">
+          <b>{{ correctCount }}</b> right<span class="vbar" aria-hidden="true"></span><b>{{ wrongCount }}</b> wrong
+        </span>
+        <span v-else class="muted counts"><b>{{ correctCount }}</b> of {{ total }} right</span>
       </div>
-      <p v-else class="alert alert-ok">Every card was right.</p>
+
+      <!-- Same cells as above the card during the round: one per card, green right, red wrong. -->
+      <div v-if="missed.length" class="seg" :style="{ '--n': total, '--gap': cellGap }" aria-hidden="true">
+        <i v-for="n in total" :key="n" :class="cellClass(n - 1)"></i>
+      </div>
+
+      <div v-if="missed.length" class="review" role="table" aria-label="Missed cards">
+        <div class="review-row review-head" role="row">
+          <span role="columnheader">Card</span><span role="columnheader">Answer</span><span role="columnheader">You typed</span>
+        </div>
+        <div v-for="row in review" :key="row.id" class="review-row" role="row">
+          <span class="rv-face copyable" :class="row.plain ? 'plain' : 'kana'" lang="ja" role="cell">{{ row.face }}</span>
+          <span class="rv-answer copyable" role="cell"><span v-for="(line, i) in row.answer" :key="i" class="rv-line">{{ line }}</span></span>
+          <span class="rv-typed" :class="row.mistake.typed ? 'copyable' : 'none'" role="cell">{{ row.mistake.text }}</span>
+        </div>
+      </div>
+      <div v-else class="perfect">
+        <span class="tick"><Icon :path="mdiCheck" :size="20" /></span>
+        <div>
+          <strong>Every card was right</strong>
+          <span>{{ total }} of {{ total }}, nothing to practise.</span>
+        </div>
+      </div>
 
       <div class="buttons">
         <button v-if="missed.length" type="button" class="btn btn-primary" @click="practiseMissed">
           <Icon :path="mdiRestart" :size="18" />Practise the {{ missed.length }} missed
         </button>
         <button type="button" class="btn" :class="missed.length ? 'btn-quiet' : 'btn-primary'" @click="another"><Icon :path="mdiRestart" :size="18" />Another round</button>
-        <RouterLink :to="{ name: 'home' }" class="btn btn-quiet back"><Icon :path="mdiTuneVariant" :size="18" />Change settings</RouterLink>
+        <RouterLink :to="{ name: 'home' }" class="btn btn-quiet"><Icon :path="mdiHome" :size="18" />Home</RouterLink>
       </div>
     </section>
   </div>
@@ -646,51 +698,108 @@ onBeforeUnmount(stopTimer)
     animation: none;
   }
 }
-.score {
-  margin: 0;
-  font-size: 17px;
-}
-.missed {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.done-head {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-}
-.missed li {
-  display: flex;
   align-items: baseline;
-  gap: 8px;
-  max-width: 100%;
+  gap: 4px 12px;
+}
+.done-head h1 {
+  margin: 0;
+}
+/* The table scrolls inside itself when a round had many misses, so the title and the buttons stay in place. */
+.review {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-y: auto;
+  max-height: min(340px, 42vh);
+}
+.review-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 0 12px;
+  padding: 8px 14px;
+  font-size: 14px;
+  border-top: 1px solid var(--line);
+}
+.review-row:first-child {
+  border-top: 0;
+}
+.review-head {
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  padding-block: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.rv-face {
+  font-size: 28px;
+  line-height: 1.1;
   min-width: 0;
-  padding: 6px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 4px;
+  overflow-wrap: anywhere;
 }
-.big {
-  font-size: 24px;
+.rv-face.plain {
+  font-size: 15px;
+  line-height: 1.3;
 }
-.big.plain {
-  font-size: 17px;
-}
-.missed .big,
-.missed .caption {
+.rv-answer,
+.rv-typed {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+.rv-answer {
+  font-weight: 600;
+}
+.rv-line + .rv-line {
+  display: block;
+  font-weight: 400;
+  color: var(--muted);
+}
+.rv-line {
+  display: block;
+}
+.rv-typed {
+  color: var(--wrong);
+  font-weight: 600;
+}
+.rv-typed.none {
+  color: var(--muted);
+  font-weight: 400;
+}
+.perfect {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--good) 12%, var(--surface));
+}
+.perfect .tick {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--good);
+  color: #fff;
+}
+.perfect strong {
+  display: block;
+}
+.perfect span:not(.tick) {
+  font-size: 13px;
+  color: var(--muted);
 }
 .buttons {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-}
-.back {
-  text-align: center;
-}
-.back:hover {
-  color: var(--ink);
 }
 @media (max-width: 520px) {
   .flash,
