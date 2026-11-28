@@ -4,7 +4,7 @@
 #   docker compose logs                    (the access key is printed at every start; it is also in Settings, Sync, once you are in)
 #
 # Update:   docker compose pull && docker compose up -d
-# Pin:      image: ghcr.io/b077as/smartjp:0.1.0      (every release has its own tag; :latest follows the newest)
+# Pin:      image: ghcr.io/b077as/smartjp:0.1.1      (every release has its own tag; :latest follows the newest)
 #
 # Everything the application writes lives in the `smartjp-data` volume (the SQLite database and the logs): back it up. Replacing the image
 # never touches it.

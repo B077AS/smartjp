@@ -107,7 +107,7 @@ Then open http://localhost:8081 and enter the key. The compose file publishes th
 - **HTTPS.** Before reaching the site from anywhere but the machine it runs on, put HTTPS in front of it (a reverse proxy, or a VPN such as Tailscale) and change the
   published port in the compose file. The site does not do TLS itself. Behind a reverse proxy on a private address, `X-Forwarded-*` headers are trusted, so the
   cookie of the key is marked `Secure`.
-- **Update:** `docker compose pull && docker compose up -d`. To stay on a version, use its tag (`ghcr.io/b077as/smartjp:0.1.0`) instead of `latest`.
+- **Update:** `docker compose pull && docker compose up -d`. To stay on a version, use its tag (`ghcr.io/b077as/smartjp:0.1.1`) instead of `latest`.
 - **Your data** is the `smartjp-data` volume (`/data`: the database `smartjp.db` and `logs/`). Back it up; replacing the image never touches it.
 
 | Environment variable | Meaning |
@@ -135,8 +135,8 @@ Needs JDK 25, Maven 3.9+ and Node 20+.
 ```
 mvn test                                                # the tests (they run on a real SQLite file in a temp folder, no Node needed)
 mvn -DskipTests package                                 # builds the Vue app too and packs it into the jar (-DskipFrontend leaves it out)
-java -jar target/smartjp-0.1.0-SNAPSHOT.jar             # website, http://localhost:8081, data in ./data
-java -jar target/smartjp-0.1.0-SNAPSHOT.jar --desktop   # desktop window, data in %LOCALAPPDATA%\smartjp
+java -jar target/smartjp-0.1.1-SNAPSHOT.jar             # website, http://localhost:8081, data in ./data
+java -jar target/smartjp-0.1.1-SNAPSHOT.jar --desktop   # desktop window, data in %LOCALAPPDATA%\smartjp
 ```
 
 The front end is always part of the jar, so a published jar needs no flag besides `--desktop`. When you run the class from an IDE, build the pages first
