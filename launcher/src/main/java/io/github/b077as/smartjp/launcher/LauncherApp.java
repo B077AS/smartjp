@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -38,6 +40,9 @@ class LauncherApp implements UpdateManager.Listener {
     private final Application app;
     private final boolean demo;
     private WebWindow window;
+    private final AtomicBoolean started = new AtomicBoolean();
+    /** The latest message of each type, oldest first: enough to draw the same state again on a page that was reloaded. */
+    private final Map<String, String> latest = new LinkedHashMap<>();
 
     private LauncherApp(Application app, boolean demo) {
         this.app = app;
@@ -75,6 +80,14 @@ class LauncherApp implements UpdateManager.Listener {
         log.info("Window created {} ms after the JVM started", System.currentTimeMillis() - Boot.STARTED);
 
         window.onMessage(this::fromPage);
+        // A page that crashes is loaded again and told where things stand (see ready); the update itself never stops.
+        window.setReloadOnCrash(true);
+        window.onCrash(event -> log.warn("The page crashed: {} (reloading: {})", event.reason(), event.reloading()));
+        window.onLoadFailed(failure -> {
+            log.error("The page failed to load: {}", failure);
+            window.show();
+            startFlowOnce(); // the app must start even with nothing to show
+        });
         window.loadHtml(page());
 
         Thread.ofVirtual().start(() -> {
@@ -100,12 +113,23 @@ class LauncherApp implements UpdateManager.Listener {
             case "ready" -> {
                 log.info("Page ready {} ms after the JVM started", System.currentTimeMillis() - Boot.STARTED);
                 window.show();
-                startFlow();
+                if (!startFlowOnce()) {
+                    replay();
+                }
             }
             case "retry" -> startFlow();
             case "quit" -> app.dispatch(app::quit);
             default -> log.debug("Ignored a message from the page: {}", message);
         }
+    }
+
+    /** Starts the update unless it already was; false when it was, which means the page has been loaded again. */
+    private boolean startFlowOnce() {
+        if (!started.compareAndSet(false, true)) {
+            return false;
+        }
+        startFlow();
+        return true;
     }
 
     private void startFlow() {
@@ -150,10 +174,17 @@ class LauncherApp implements UpdateManager.Listener {
         app.dispatch(app::quit);
     }
 
-    private void send(String type, Map<String, ?> fields) {
+    private synchronized void send(String type, Map<String, ?> fields) {
         JsonObject o = GSON.toJsonTree(fields).getAsJsonObject();
         o.addProperty("type", type);
-        window.postMessage(o.toString());
+        String message = o.toString();
+        latest.remove(type);
+        latest.put(type, message);
+        window.postMessage(message);
+    }
+
+    private synchronized void replay() {
+        latest.values().forEach(window::postMessage);
     }
 
     private static byte[] readResource(String name) {

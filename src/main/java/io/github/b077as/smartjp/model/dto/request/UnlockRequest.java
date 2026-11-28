@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /** The access key as typed on the website's unlock page. */
 @Data
@@ -12,5 +13,5 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class UnlockRequest {
 
-    private String key;
+    private @Nullable String key;
 }

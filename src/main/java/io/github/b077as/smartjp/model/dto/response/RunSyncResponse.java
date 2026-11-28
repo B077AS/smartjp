@@ -1,6 +1,7 @@
 package io.github.b077as.smartjp.model.dto.response;
 
-import io.github.b077as.smartjp.model.dto.NonNull;
+import org.jspecify.annotations.Nullable;
+
 import io.github.b077as.smartjp.model.dto.summary.SyncCounts;
 
 /**
@@ -8,5 +9,5 @@ import io.github.b077as.smartjp.model.dto.summary.SyncCounts;
  * saved first and {@code backupSide} says which side it is ("desktop" or "server"); both are null for a merge. {@code sent} is what the
  * server took in, {@code received} what this desktop took in.
  */
-public record RunSyncResponse(@NonNull String result, String backup, String backupSide, SyncCounts sent, SyncCounts received) {
+public record RunSyncResponse(String result, @Nullable String backup, @Nullable String backupSide, @Nullable SyncCounts sent, @Nullable SyncCounts received) {
 }

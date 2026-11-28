@@ -1,6 +1,7 @@
 package io.github.b077as.smartjp.model.dto.response;
 
-import io.github.b077as.smartjp.model.dto.NonNull;
+import org.jspecify.annotations.Nullable;
+
 import io.github.b077as.smartjp.model.dto.summary.CustomCardSummary;
 
 /**
@@ -8,5 +9,5 @@ import io.github.b077as.smartjp.model.dto.summary.CustomCardSummary;
  * answer is over the limit: nothing is cut off silently), too_many, not_found (an id that is not a card of this database).
  * The card is there only for created and updated.
  */
-public record SaveCustomCardResponse(@NonNull String result, CustomCardSummary card) {
+public record SaveCustomCardResponse(String result, @Nullable CustomCardSummary card) {
 }

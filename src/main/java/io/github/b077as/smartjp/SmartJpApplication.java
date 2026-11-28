@@ -12,7 +12,10 @@ import java.util.Objects;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+import io.github.b077as.jolt.CrashEvent;
+import io.github.b077as.jolt.WebWindow;
 import io.github.b077as.jolt.spring.JoltSpringApplication;
+
 /**
  * The learning app. One jar, two ways to start it:
  * <ul>
@@ -76,7 +79,22 @@ public class SmartJpApplication {
                         .withMaximized(true) // WIDTH x HEIGHT is only the size the window returns to when restored
                         .withIcon(readIcon())
                         .withBackgroundColor(PAPER))
+                .onWindow(SmartJpApplication::recoverFromCrashes)
                 .run(args);
+    }
+
+    /**
+     * The page holds nothing that is not in the database (but the round being played), so a crashed one is simply loaded
+     * again. If the whole web view is gone the window cannot recover, so it is closed, which ends the application, rather
+     * than left blank. Jolt logs the crash.
+     */
+    private static void recoverFromCrashes(WebWindow window) {
+        window.setReloadOnCrash(true);
+        window.onCrash(event -> {
+            if (event.reason() == CrashEvent.Reason.WEB_VIEW_LOST) {
+                window.close();
+            }
+        });
     }
 
     /** This user's app data folder: %LOCALAPPDATA%\smartjp on Windows (where Jolt keeps the window's own data), $XDG_DATA_HOME/smartjp or ~/.local/share/smartjp on Linux. */
